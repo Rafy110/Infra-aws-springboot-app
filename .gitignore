@@ -1,0 +1,61 @@
+# ========== TERRAFORM ==========
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+*.tfvars
+!*.tfvars.example
+
+# ========== NODE.JS / NEXT.JS ==========
+node_modules/
+.npm
+.cache
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+dist/
+
+# Build/Production
+/build
+*.tsbuildinfo
+next-env.d.ts
+
+# ========== TESTING ==========
+/coverage
+
+# ========== LOGS ==========
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ========== ENVIRONMENT ==========
+.env
+.env*.local
+
+# ========== IDE ==========
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ========== OS ==========
+.DS_Store
+Thumbs.db
+*.pem
+
+# ========== DEPLOYMENT ==========
+.vercel
+*.zip
+*.tar.gz
+
+# ========== DOCUMENTATION ==========
+.BEGGINER_START_HERE.md
+.QUICKSTART.md
+.CHECK_PREREQUISITES.md
+.STEP_BY_STEP_GUIDE.md
+.TERRAFORM_ECS.md
