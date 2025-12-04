@@ -18,7 +18,7 @@ definitions:
           - docker
         script:
           - |
-            # Install AWS CLI v2 (Alpine package)
+            # Install AWS CLI v2 (Alpine package - no pip needed)
             apk add --no-cache aws-cli
             
             # Configure AWS CLI
@@ -32,29 +32,56 @@ definitions:
             # Login to ECR
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
             
-            # Build and push
+            # Build and tag Docker image
             cd app
             docker build -t ${APP_NAME}-dev:${BITBUCKET_COMMIT} .
             docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
+            docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:latest
+            
+            # Push to ECR (both tags)
             docker push ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
-            echo "✅ Image pushed!"
+            docker push ${ECR_REGISTRY}/${APP_NAME}-dev:latest
+            echo "✅ Image pushed to ECR: ${ECR_REGISTRY}/${APP_NAME}-dev:latest"
 
     - step: &deploy-dev
         name: Deploy to ECS (Dev)
         script:
           - |
-            # Install AWS CLI v2
+            # Install AWS CLI v2 (Alpine package - no pip needed)
             apk add --no-cache aws-cli
             
-            # Configure AWS
+            # Configure AWS CLI
             aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
             aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
             aws configure set region $AWS_REGION
             
-            # Deploy
+            # ECS service details
+            CLUSTER_NAME="${APP_NAME}-dev-cluster"
+            SERVICE_NAME="${APP_NAME}-dev-service"
+            
+            echo "🔄 Updating ECS service to pull latest image..."
             aws ecs update-service \
-              --cluster ${APP_NAME}-dev-cluster \
-              --service ${APP_NAME}-dev-service \
+              --cluster $CLUSTER_NAME \
+              --service $SERVICE_NAME \
               --force-new-deployment \
               --region $AWS_REGION
-            echo "✅ Deployed!"
+            
+            echo "⏳ Waiting for service to stabilize..."
+            aws ecs wait services-stable \
+              --cluster $CLUSTER_NAME \
+              --services $SERVICE_NAME \
+              --region $AWS_REGION
+            
+            echo "✅ Deployment completed! Service is running with latest image."
+
+pipelines:
+  branches:
+    develop:
+      - step: *build-and-test
+      - step: *build-and-push-dev
+      - step: *deploy-dev
+
+  custom:
+    deploy-dev:
+      - step: *build-and-push-dev
+      - step: *deploy-dev
