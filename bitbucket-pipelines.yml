@@ -1,4 +1,4 @@
-image: atlassian/default-image:3
+image: node:18-alpine
 
 definitions:
   steps:
@@ -7,19 +7,10 @@ definitions:
         caches:
           - node
         script:
-          - |
-            # Install Node.js 18
-            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-            apt-get install -y nodejs
-            node --version
-            npm --version
-            
-            # Build and test
-            cd app
-            npm cache clean --force || true
-            npm install
-            npm run build
-            npm run lint || true
+          - cd app
+          - npm install
+          - npm run build
+          - npm run lint || true
 
     - step: &build-and-push-dev
         name: Build and Push Docker Image (Dev)
@@ -28,8 +19,8 @@ definitions:
         script:
           - |
             # Install AWS CLI
-            pip install awscli --upgrade --user || true
-            export PATH=~/.local/bin:$PATH
+            apk add --no-cache python3 py3-pip
+            pip3 install awscli
             
             # Configure AWS CLI
             aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
@@ -42,61 +33,50 @@ definitions:
             # Login to ECR
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
             
-            # Build Docker image
+            # Build and tag Docker image
             cd app
             docker build -t ${APP_NAME}-dev:${BITBUCKET_COMMIT} .
             docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
             docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:latest
             
-            # Push to ECR
+            # Push to ECR (both tags)
             docker push ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
             docker push ${ECR_REGISTRY}/${APP_NAME}-dev:latest
+            echo "✅ Image pushed to ECR: ${ECR_REGISTRY}/${APP_NAME}-dev:latest"
 
     - step: &deploy-dev
         name: Deploy to ECS (Dev)
         script:
           - |
             # Install AWS CLI
-            pip install awscli --upgrade --user || true
-            export PATH=~/.local/bin:$PATH
+            apk add --no-cache python3 py3-pip
+            pip3 install awscli
             
             # Configure AWS CLI
             aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
             aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
             aws configure set region $AWS_REGION
             
-            # Set ECS service details
+            # ECS service details
             CLUSTER_NAME="${APP_NAME}-dev-cluster"
             SERVICE_NAME="${APP_NAME}-dev-service"
             
-            # Force new deployment to pull latest image
+            echo "🔄 Updating ECS service to pull latest image..."
             aws ecs update-service \
               --cluster $CLUSTER_NAME \
               --service $SERVICE_NAME \
               --force-new-deployment \
               --region $AWS_REGION
             
-            echo "Deployment initiated. Waiting for service to stabilize..."
+            echo "⏳ Waiting for service to stabilize..."
             aws ecs wait services-stable \
               --cluster $CLUSTER_NAME \
               --services $SERVICE_NAME \
               --region $AWS_REGION
             
-            echo "✅ Deployment completed successfully!"
+            echo "✅ Deployment completed! Service is running with latest image."
 
 pipelines:
-  default:
-    - step:
-        name: Install Dependencies
-        caches:
-          - node
-        script:
-          - |
-            # Install Node.js 18
-            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-            apt-get install -y nodejs
-            cd app && npm install
-
   branches:
     develop:
       - step: *build-and-test
