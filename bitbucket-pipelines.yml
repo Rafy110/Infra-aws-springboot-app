@@ -8,7 +8,7 @@ definitions:
           - node
         script:
           - cd app
-          - npm install
+          - npm ci
           - npm run build
           - npm run lint || true
 
@@ -18,9 +18,8 @@ definitions:
           - docker
         script:
           - |
-            # Install AWS CLI
-            apk add --no-cache python3 py3-pip
-            pip3 install awscli
+            # Install AWS CLI v2 (Alpine package)
+            apk add --no-cache aws-cli
             
             # Configure AWS CLI
             aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
@@ -33,57 +32,29 @@ definitions:
             # Login to ECR
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
             
-            # Build and tag Docker image
+            # Build and push
             cd app
             docker build -t ${APP_NAME}-dev:${BITBUCKET_COMMIT} .
             docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
-            docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:latest
-            
-            # Push to ECR (both tags)
             docker push ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
-            docker push ${ECR_REGISTRY}/${APP_NAME}-dev:latest
-            echo "✅ Image pushed to ECR: ${ECR_REGISTRY}/${APP_NAME}-dev:latest"
+            echo "✅ Image pushed!"
 
     - step: &deploy-dev
         name: Deploy to ECS (Dev)
         script:
           - |
-            # Install AWS CLI
-            apk add --no-cache python3 py3-pip
-            pip3 install awscli
+            # Install AWS CLI v2
+            apk add --no-cache aws-cli
             
-            # Configure AWS CLI
+            # Configure AWS
             aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
             aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
             aws configure set region $AWS_REGION
             
-            # ECS service details
-            CLUSTER_NAME="${APP_NAME}-dev-cluster"
-            SERVICE_NAME="${APP_NAME}-dev-service"
-            
-            echo "🔄 Updating ECS service to pull latest image..."
+            # Deploy
             aws ecs update-service \
-              --cluster $CLUSTER_NAME \
-              --service $SERVICE_NAME \
+              --cluster ${APP_NAME}-dev-cluster \
+              --service ${APP_NAME}-dev-service \
               --force-new-deployment \
               --region $AWS_REGION
-            
-            echo "⏳ Waiting for service to stabilize..."
-            aws ecs wait services-stable \
-              --cluster $CLUSTER_NAME \
-              --services $SERVICE_NAME \
-              --region $AWS_REGION
-            
-            echo "✅ Deployment completed! Service is running with latest image."
-
-pipelines:
-  branches:
-    develop:
-      - step: *build-and-test
-      - step: *build-and-push-dev
-      - step: *deploy-dev
-
-  custom:
-    deploy-dev:
-      - step: *build-and-push-dev
-      - step: *deploy-dev
+            echo "✅ Deployed!"
