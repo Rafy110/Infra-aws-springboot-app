@@ -1,3 +1,92 @@
+# image: node:18-alpine
+
+# definitions:
+#   steps:
+#     - step: &build-and-test
+#         name: Build and Test
+#         caches:
+#           - node
+#         script:
+#           - cd app
+#           - npm ci
+#           - npm run build
+#           - npm run lint || true
+
+#     - step: &build-and-push-dev
+#         name: Build and Push Docker Image (Dev)
+#         services:
+#           - docker
+#         script:
+#           - |
+#             # Install AWS CLI v2 (Alpine package - no pip needed)
+#             apk add --no-cache aws-cli
+            
+#             # Configure AWS CLI
+#             aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+#             aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+#             aws configure set region $AWS_REGION
+            
+#             # Get ECR registry URL
+#             ECR_REGISTRY=$(aws ecr describe-repositories --repository-names ${APP_NAME}-dev --query 'repositories[0].repositoryUri' --output text | cut -d'/' -f1)
+            
+#             # Login to ECR
+#             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+            
+#             # Build and tag Docker image
+#             cd app
+#             docker build -t ${APP_NAME}-dev:${BITBUCKET_COMMIT} .
+#             docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
+#             docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:latest
+            
+#             # Push to ECR (both tags)
+#             docker push ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
+#             docker push ${ECR_REGISTRY}/${APP_NAME}-dev:latest
+#             echo "✅ Image pushed to ECR: ${ECR_REGISTRY}/${APP_NAME}-dev:latest"
+
+#     - step: &deploy-dev
+#         name: Deploy to ECS (Dev)
+#         script:
+#           - |
+#             # Install AWS CLI v2 (Alpine package - no pip needed)
+#             apk add --no-cache aws-cli
+            
+#             # Configure AWS CLI
+#             aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+#             aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+#             aws configure set region $AWS_REGION
+            
+#             # ECS service details
+#             CLUSTER_NAME="${APP_NAME}-dev-cluster"
+#             SERVICE_NAME="${APP_NAME}-dev-service"
+            
+#             echo "🔄 Updating ECS service to pull latest image..."
+#             aws ecs update-service \
+#               --cluster $CLUSTER_NAME \
+#               --service $SERVICE_NAME \
+#               --force-new-deployment \
+#               --region $AWS_REGION
+            
+#             echo "⏳ Waiting for service to stabilize..."
+#             aws ecs wait services-stable \
+#               --cluster $CLUSTER_NAME \
+#               --services $SERVICE_NAME \
+#               --region $AWS_REGION
+            
+#             echo "✅ Deployment completed! Service is running with latest image."
+
+# pipelines:
+#   branches:
+#     develop:
+#       - step: *build-and-test
+#       - step: *build-and-push-dev
+#       - step: *deploy-dev
+
+#   custom:
+#     deploy-dev:
+#       - step: *build-and-push-dev
+#       - step: *deploy-dev
+
+
 image: node:18-alpine
 
 definitions:
@@ -11,6 +100,7 @@ definitions:
           - npm ci
           - npm run build
           - npm run lint || true
+          - echo "✅ Build successful"
 
     - step: &build-and-push-dev
         name: Build and Push Docker Image (Dev)
@@ -18,7 +108,7 @@ definitions:
           - docker
         script:
           - |
-            # Install AWS CLI v2 (Alpine package - no pip needed)
+            # Install AWS CLI v2
             apk add --no-cache aws-cli
             
             # Configure AWS CLI
@@ -26,28 +116,35 @@ definitions:
             aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
             aws configure set region $AWS_REGION
             
-            # Get ECR registry URL
-            ECR_REGISTRY=$(aws ecr describe-repositories --repository-names ${APP_NAME}-dev --query 'repositories[0].repositoryUri' --output text | cut -d'/' -f1)
+            # HARDCODED ECR URL (no DescribeRepositories needed)
+            ECR_REGISTRY="588945689572.dkr.ecr.us-east-1.amazonaws.com"
+            REPO_NAME="nextjs-app-dev"
             
-            # Login to ECR
+            # Login to ECR (GetAuthorizationToken permission only)
+            echo "🔐 Logging into ECR..."
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
             
-            # Build and tag Docker image
+            # Build Docker image
+            echo "🏗️ Building Docker image..."
             cd app
-            docker build -t ${APP_NAME}-dev:${BITBUCKET_COMMIT} .
-            docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
-            docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:latest
+            docker build -t $REPO_NAME:$BITBUCKET_COMMIT .
             
-            # Push to ECR (both tags)
-            docker push ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
-            docker push ${ECR_REGISTRY}/${APP_NAME}-dev:latest
-            echo "✅ Image pushed to ECR: ${ECR_REGISTRY}/${APP_NAME}-dev:latest"
+            # Tag image
+            docker tag $REPO_NAME:$BITBUCKET_COMMIT $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
+            docker tag $REPO_NAME:$BITBUCKET_COMMIT $ECR_REGISTRY/$REPO_NAME:latest
+            
+            # Push to ECR
+            echo "📤 Pushing to ECR..."
+            docker push $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
+            docker push $ECR_REGISTRY/$REPO_NAME:latest
+            
+            echo "✅ Image pushed to ECR: $ECR_REGISTRY/$REPO_NAME:latest"
 
     - step: &deploy-dev
         name: Deploy to ECS (Dev)
         script:
           - |
-            # Install AWS CLI v2 (Alpine package - no pip needed)
+            # Install AWS CLI v2
             apk add --no-cache aws-cli
             
             # Configure AWS CLI
@@ -56,8 +153,8 @@ definitions:
             aws configure set region $AWS_REGION
             
             # ECS service details
-            CLUSTER_NAME="${APP_NAME}-dev-cluster"
-            SERVICE_NAME="${APP_NAME}-dev-service"
+            CLUSTER_NAME="nextjs-app-dev-cluster"
+            SERVICE_NAME="nextjs-app-dev-service"
             
             echo "🔄 Updating ECS service to pull latest image..."
             aws ecs update-service \
@@ -73,6 +170,10 @@ definitions:
               --region $AWS_REGION
             
             echo "✅ Deployment completed! Service is running with latest image."
+            
+            # Get ALB DNS for reference
+            ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'nextjs-app-dev-alb')].DNSName" --output text 2>/dev/null || echo "Check AWS Console for ALB URL")
+            echo "🌐 App URL: http://$ALB_DNS"
 
 pipelines:
   branches:
