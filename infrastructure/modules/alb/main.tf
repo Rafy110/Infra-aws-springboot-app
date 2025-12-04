@@ -61,8 +61,9 @@ locals {
   certificate_arn = var.certificate_arn != "" ? var.certificate_arn : (var.domain_name != "" ? aws_acm_certificate.main[0].arn : "")
 }
 
-# HTTP Listener (redirects to HTTPS)
+# HTTP Listener (redirects to HTTPS) - only if certificate exists
 resource "aws_lb_listener" "http" {
+  count             = local.certificate_arn != "" ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"

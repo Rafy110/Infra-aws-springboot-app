@@ -8,12 +8,12 @@ terraform {
     }
   }
 
-  backend "s3" {
-    # Configure backend in your environment-specific main.tf
-    # bucket = "your-terraform-state-bucket"
-    # key    = "nextjs-app/{environment}/terraform.tfstate"
-    # region = "us-east-1"
-  }
+  # backend "s3" {
+  #   # Configure backend in your environment-specific main.tf
+  #   # bucket = "your-terraform-state-bucket"
+  #   # key    = "nextjs-app/{environment}/terraform.tfstate"
+  #   # region = "us-east-1"
+  # }
 }
 
 provider "aws" {
