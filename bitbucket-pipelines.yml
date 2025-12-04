@@ -7,11 +7,19 @@ definitions:
         caches:
           - node
         script:
-          - cd app
-          - npm cache clean --force || true
-          - npm install
-          - npm run build
-          - npm run lint || true
+          - |
+            # Install Node.js 18
+            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+            apt-get install -y nodejs
+            node --version
+            npm --version
+            
+            # Build and test
+            cd app
+            npm cache clean --force || true
+            npm install
+            npm run build
+            npm run lint || true
 
     - step: &build-and-push-dev
         name: Build and Push Docker Image (Dev)
@@ -83,7 +91,11 @@ pipelines:
         caches:
           - node
         script:
-          - cd app && npm install
+          - |
+            # Install Node.js 18
+            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+            apt-get install -y nodejs
+            cd app && npm install
 
   branches:
     develop:
