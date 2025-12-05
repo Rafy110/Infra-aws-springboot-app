@@ -1,172 +1,148 @@
-image: atlassian/default-image:3
-
-definitions:
-  steps:
-    - step: &build-and-test
-        name: Build and Test
-        caches:
-          - node
-        script:
-          - cd app
-          - npm ci
-          - npm run build
-          - npm run lint || true  # Continue even if lint fails
-        artifacts:
-          - app/.next/**
-          - app/node_modules/**
-
-    - step: &build-and-push-dev
-        name: Build and Push Docker Image (Dev)
-        services:
-          - docker
-        script:
-          - |
-            # Install AWS CLI if not available
-            pip install awscli --upgrade --user || true
-            export PATH=~/.local/bin:$PATH
-            
-            # Login to AWS ECR
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-            aws configure set region $AWS_REGION
-            
-            # Get ECR login token
-            ECR_REGISTRY=$(aws ecr describe-repositories --repository-names ${APP_NAME}-dev --query 'repositories[0].repositoryUri' --output text | cut -d'/' -f1)
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
-            
-            # Build Docker image
-            cd app
-            docker build -t ${APP_NAME}-dev:${BITBUCKET_COMMIT} .
-            docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
-            docker tag ${APP_NAME}-dev:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-dev:latest
-            
-            # Push to ECR
-            docker push ${ECR_REGISTRY}/${APP_NAME}-dev:${BITBUCKET_COMMIT}
-            docker push ${ECR_REGISTRY}/${APP_NAME}-dev:latest
-
-    - step: &deploy-dev
-        name: Deploy to ECS (Dev)
-        deployment: dev
-        script:
-          - |
-            # Install AWS CLI if not available
-            pip install awscli --upgrade --user || true
-            export PATH=~/.local/bin:$PATH
-            
-            # Configure AWS CLI
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-            aws configure set region $AWS_REGION
-            
-            # Get ECR repository URL
-            ECR_REPO=$(aws ecr describe-repositories --repository-names ${APP_NAME}-dev --query 'repositories[0].repositoryUri' --output text)
-            CLUSTER_NAME="${APP_NAME}-dev-cluster"
-            SERVICE_NAME="${APP_NAME}-dev-service"
-            
-            # Force new deployment
-            aws ecs update-service \
-              --cluster $CLUSTER_NAME \
-              --service $SERVICE_NAME \
-              --force-new-deployment \
-              --region $AWS_REGION
-            
-            echo "Deployment initiated. Waiting for service to stabilize..."
-            aws ecs wait services-stable \
-              --cluster $CLUSTER_NAME \
-              --services $SERVICE_NAME \
-              --region $AWS_REGION
-            
-            echo "Deployment completed successfully!"
-
-    - step: &build-and-push-prod
-        name: Build and Push Docker Image (Prod)
-        services:
-          - docker
-        script:
-          - |
-            # Install AWS CLI if not available
-            pip install awscli --upgrade --user || true
-            export PATH=~/.local/bin:$PATH
-            
-            # Login to AWS ECR
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID_PROD
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY_PROD
-            aws configure set region $AWS_REGION_PROD
-            
-            # Get ECR login token
-            ECR_REGISTRY=$(aws ecr describe-repositories --repository-names ${APP_NAME}-prod --query 'repositories[0].repositoryUri' --output text | cut -d'/' -f1)
-            aws ecr get-login-password --region $AWS_REGION_PROD | docker login --username AWS --password-stdin $ECR_REGISTRY
-            
-            # Build Docker image
-            cd app
-            docker build -t ${APP_NAME}-prod:${BITBUCKET_COMMIT} .
-            docker tag ${APP_NAME}-prod:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-prod:${BITBUCKET_COMMIT}
-            docker tag ${APP_NAME}-prod:${BITBUCKET_COMMIT} ${ECR_REGISTRY}/${APP_NAME}-prod:latest
-            
-            # Push to ECR
-            docker push ${ECR_REGISTRY}/${APP_NAME}-prod:${BITBUCKET_COMMIT}
-            docker push ${ECR_REGISTRY}/${APP_NAME}-prod:latest
-
-    - step: &deploy-prod
-        name: Deploy to ECS (Prod)
-        deployment: production
-        script:
-          - |
-            # Install AWS CLI if not available
-            pip install awscli --upgrade --user || true
-            export PATH=~/.local/bin:$PATH
-            
-            # Configure AWS CLI
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID_PROD
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY_PROD
-            aws configure set region $AWS_REGION_PROD
-            
-            # Get ECR repository URL
-            ECR_REPO=$(aws ecr describe-repositories --repository-names ${APP_NAME}-prod --query 'repositories[0].repositoryUri' --output text)
-            CLUSTER_NAME="${APP_NAME}-prod-cluster"
-            SERVICE_NAME="${APP_NAME}-prod-service"
-            
-            # Force new deployment
-            aws ecs update-service \
-              --cluster $CLUSTER_NAME \
-              --service $SERVICE_NAME \
-              --force-new-deployment \
-              --region $AWS_REGION_PROD
-            
-            echo "Deployment initiated. Waiting for service to stabilize..."
-            aws ecs wait services-stable \
-              --cluster $CLUSTER_NAME \
-              --services $SERVICE_NAME \
-              --region $AWS_REGION_PROD
-            
-            echo "Deployment completed successfully!"
+image: node:18-alpine
 
 pipelines:
-  default:
-    - step:
-        name: Install Dependencies
-        caches:
-          - node
-        script:
-          - cd app && npm ci
-
   branches:
     develop:
-      - step: *build-and-test
-      - step: *build-and-push-dev
-      - step: *deploy-dev
+      - step:
+          name: DEV Build and Test
+          caches:
+            - node
+          script:
+            - cd $BITBUCKET_CLONE_DIR/app
+            - npm ci
+            - npm run build
+            - npm run lint || true
+            - echo "✅ DEV Build successful"
+            
+      - step:
+          name: Build and Push (DEV)
+          services:
+            - docker
+          script:
+            - |
+              # Install AWS CLI
+              apk add --no-cache aws-cli
+              
+              # Configure AWS for DEV
+              aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+              aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+              aws configure set region $AWS_REGION
+              
+              # ECR details for DEV
+              ECR_REGISTRY="588945689572.dkr.ecr.us-east-1.amazonaws.com"
+              REPO_NAME="nextjs-app-dev"
+              
+              # Login to ECR
+              aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+              
+              # Build and push
+              cd $BITBUCKET_CLONE_DIR/app
+              docker build -t $REPO_NAME:$BITBUCKET_COMMIT .
+              docker tag $REPO_NAME:$BITBUCKET_COMMIT $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
+              docker push $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
+              echo "✅ DEV Image pushed"
+              
+      - step:
+          name: Deploy to ECS (DEV)
+          script:
+            - |
+              # Install AWS CLI
+              apk add --no-cache aws-cli
+              
+              # Configure AWS for DEV
+              aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+              aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+              aws configure set region $AWS_REGION
+              
+              # Deploy to DEV
+              aws ecs update-service \
+                --cluster nextjs-app-dev-cluster \
+                --service nextjs-app-dev-service \
+                --force-new-deployment \
+                --region $AWS_REGION
+              echo "✅ DEV Deployed"
 
-    main:
-      - step: *build-and-test
-      - step: *build-and-push-prod
-      - step: *deploy-prod
+    master:
+      - step:
+          name: PROD Build and Test
+          caches:
+            - node
+          script:
+            - cd $BITBUCKET_CLONE_DIR/app
+            - npm ci
+            - npm run build
+            - npm run lint || true
+            - echo "✅ PROD Build successful"
+            
+      - step:
+          name: Build and Push (PROD)
+          services:
+            - docker
+          script:
+            - |
+              # Install AWS CLI
+              apk add --no-cache aws-cli
+              
+              # Configure AWS for PROD
+              aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID_PROD
+              aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY_PROD
+              aws configure set region $AWS_REGION_PROD
+              
+              # ECR details for PROD
+              ECR_REGISTRY="588945689572.dkr.ecr.us-east-1.amazonaws.com"
+              REPO_NAME="nextjs-app-prod"
+              
+              # Login to ECR
+              aws ecr get-login-password --region $AWS_REGION_PROD | docker login --username AWS --password-stdin $ECR_REGISTRY
+              
+              # Build and push
+              cd $BITBUCKET_CLONE_DIR/app
+              docker build -t $REPO_NAME:$BITBUCKET_COMMIT .
+              docker tag $REPO_NAME:$BITBUCKET_COMMIT $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
+              docker push $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
+              echo "✅ PROD Image pushed"
+              
+      - step:
+          name: Deploy to ECS (PROD)
+          script:
+            - |
+              # Install AWS CLI
+              apk add --no-cache aws-cli
+              
+              # Configure AWS for PROD
+              aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID_PROD
+              aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY_PROD
+              aws configure set region $AWS_REGION_PROD
+              
+              # Deploy to PROD
+              aws ecs update-service \
+                --cluster nextjs-app-prod-cluster \
+                --service nextjs-app-prod-service \
+                --force-new-deployment \
+                --region $AWS_REGION_PROD
+              echo "✅ PROD Deployed"
 
   custom:
     deploy-dev:
-      - step: *build-and-push-dev
-      - step: *deploy-dev
+      - step:
+          name: Manual Deploy (DEV)
+          script:
+            - |
+              apk add --no-cache aws-cli
+              aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+              aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+              aws configure set region $AWS_REGION
+              aws ecs update-service --cluster nextjs-app-dev-cluster --service nextjs-app-dev-service --force-new-deployment --region $AWS_REGION
+              echo "✅ DEV Deployed"
     
     deploy-prod:
-      - step: *build-and-push-prod
-      - step: *deploy-prod
-
+      - step:
+          name: Manual Deploy (PROD)
+          script:
+            - |
+              apk add --no-cache aws-cli
+              aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID_PROD
+              aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY_PROD
+              aws configure set region $AWS_REGION_PROD
+              aws ecs update-service --cluster nextjs-app-prod-cluster --service nextjs-app-prod-service --force-new-deployment --region $AWS_REGION_PROD
+              echo "✅ PROD Deployed"
