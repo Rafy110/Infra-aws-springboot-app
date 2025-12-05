@@ -1,7 +1,7 @@
 export default function Home() {
   return (
     <main className="container">
-      <h1>Welcome to Next.js Frontend with some changes applied</h1>
+      <h1>Welcome to Next.js Frontend Development</h1>
       <p>This application is running on AWS ECS Fargate</p>
       <div className="info">
         <p>Environment: {process.env.NEXT_PUBLIC_ENV || 'development'}</p>
