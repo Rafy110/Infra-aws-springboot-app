@@ -38,9 +38,16 @@ pipelines:
               # Build and push
               cd $BITBUCKET_CLONE_DIR/app
               docker build -t $REPO_NAME:$BITBUCKET_COMMIT .
+              
+              # Tag as latest AND commit hash
+              docker tag $REPO_NAME:$BITBUCKET_COMMIT $ECR_REGISTRY/$REPO_NAME:latest
               docker tag $REPO_NAME:$BITBUCKET_COMMIT $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
+              
+              # Push both tags
+              docker push $ECR_REGISTRY/$REPO_NAME:latest
               docker push $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
-              echo "✅ DEV Image pushed"
+              
+              echo "✅ DEV Image pushed with latest tag"
               
       - step:
           name: Deploy to ECS (DEV)
@@ -98,9 +105,16 @@ pipelines:
               # Build and push
               cd $BITBUCKET_CLONE_DIR/app
               docker build -t $REPO_NAME:$BITBUCKET_COMMIT .
+              
+              # Tag as latest AND commit hash
+              docker tag $REPO_NAME:$BITBUCKET_COMMIT $ECR_REGISTRY/$REPO_NAME:latest
               docker tag $REPO_NAME:$BITBUCKET_COMMIT $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
+              
+              # Push both tags
+              docker push $ECR_REGISTRY/$REPO_NAME:latest
               docker push $ECR_REGISTRY/$REPO_NAME:$BITBUCKET_COMMIT
-              echo "✅ PROD Image pushed"
+              
+              echo "✅ PROD Image pushed with latest tag"
               
       - step:
           name: Deploy to ECS (PROD)
