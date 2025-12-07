@@ -1,13 +1,4 @@
 # Quick Start Guide
-
-## Prerequisites Checklist
-
-- [ ] AWS Account with admin access
-- [ ] Terraform >= 1.5.0 installed
-- [ ] AWS CLI configured locally
-- [ ] Bitbucket repository created
-- [ ] Domain name (optional, for HTTPS)
-
 ## Step 1: Deploy Infrastructure (Dev)
 
 ```bash

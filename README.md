@@ -2,29 +2,6 @@
 
 Complete AWS infrastructure setup for deploying a Next.js frontend application on AWS ECS Fargate with automated CI/CD via Bitbucket Pipelines.
 
-## 🎯 New to This Project?
-
-**👉 Start here:** Read `BEGINNER_START_HERE.md` for a quick overview, then follow `STEP_BY_STEP_GUIDE.md` for detailed step-by-step instructions.
-
-**For beginners:** The step-by-step guide walks you through:
-1. Running the app locally
-2. Testing Docker locally
-3. Configuring AWS
-4. Deploying with Terraform
-5. Setting up Bitbucket
-6. Verifying everything works
-
-## 📋 Table of Contents
-
-- [Architecture Overview](#architecture-overview)
-- [Project Structure](#project-structure)
-- [How Components Are Wired Together](#how-components-are-wired-together)
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
-- [Bitbucket Variables Setup](#bitbucket-variables-setup)
-- [Deployment](#deployment)
-- [Troubleshooting](#troubleshooting)
-
 ## 🏗️ Architecture Overview
 
 ```
@@ -71,7 +48,6 @@ ECR Repository (Docker Images)
 4. **Load Balancing**
    - Application Load Balancer (public)
    - Target Group (routes to ECS tasks)
-   - HTTPS listener with ACM certificate
    - HTTP listener (redirects to HTTPS)
 
 5. **Security**
@@ -85,60 +61,8 @@ ECR Repository (Docker Images)
    - Container Insights enabled
    - Health checks configured
 
-## 📁 Project Structure
-
-```
-nestjs-aws-infra/
-├── app/                          # Next.js Application
-│   ├── src/
-│   │   └── app/
-│   │       ├── page.tsx          # Main page
-│   │       ├── layout.tsx        # Root layout
-│   │       ├── health/
-│   │       │   └── route.ts      # Health check endpoint
-│   │       └── globals.css        # Global styles
-│   ├── Dockerfile                # Multi-stage Docker build
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── next.config.js
-│
-├── infrastructure/               # Terraform Infrastructure
-│   ├── modules/
-│   │   ├── networking/          # VPC, Subnets, IGW, NAT, Security Groups
-│   │   ├── ecr/                 # ECR Repository
-│   │   ├── ecs/                 # ECS Cluster, Task Definition, Service
-│   │   ├── alb/                 # Application Load Balancer
-│   │   └── security/            # IAM Roles, SSM Parameters
-│   ├── environments/
-│   │   ├── dev/                 # Development environment
-│   │   │   ├── main.tf
-│   │   │   ├── variables.tf
-│   │   │   ├── terraform.tfvars
-│   │   │   └── outputs.tf
-│   │   └── prod/                # Production environment
-│   │       ├── main.tf
-│   │       ├── variables.tf
-│   │       ├── terraform.tfvars
-│   │       └── outputs.tf
-│   ├── main.tf                  # Root module
-│   ├── variables.tf             # Root variables
-│   └── outputs.tf               # Root outputs
-│
-├── bitbucket-pipelines.yml      # CI/CD Pipeline Configuration
-└── README.md                    # This file
-```
 
 ## 🔌 How Components Are Wired Together
-
-### 1. **Networking Flow**
-
-```
-Internet → Internet Gateway → Public Subnets (ALB)
-                                    ↓
-                            Private Subnets (ECS Tasks)
-                                    ↓
-                                NAT Gateway → Internet
-```
 
 - **Public Subnets**: Host the ALB, accessible from the internet
 - **Private Subnets**: Host ECS tasks, isolated from direct internet access
@@ -148,18 +72,6 @@ Internet → Internet Gateway → Public Subnets (ALB)
   - ECS SG: Allows inbound traffic only from ALB SG on port 3000
 
 ### 2. **Load Balancer → ECS Connection**
-
-```
-ALB (Public Subnets)
-  │
-  ├── HTTP Listener (Port 80) → Redirects to HTTPS
-  │
-  └── HTTPS Listener (Port 443) → Target Group
-                                      │
-                                      ▼
-                              ECS Tasks (Private Subnets)
-                              Port 3000
-```
 
 - ALB listens on ports 80 and 443
 - Target Group routes traffic to ECS tasks on port 3000
@@ -183,7 +95,7 @@ Task Definition:
 ### 4. **CI/CD Pipeline Flow**
 
 ```
-Bitbucket Push (develop/main branch)
+Bitbucket Push (develop/master branch)
   │
   ├── Build & Test
   │   └── npm ci, npm run build, npm run lint
@@ -256,18 +168,6 @@ cd app
 npm install
 ```
 
-### 3. Configure Terraform Backend (Optional)
-
-Edit `infrastructure/main.tf` to configure S3 backend:
-
-```hcl
-backend "s3" {
-  bucket = "your-terraform-state-bucket"
-  key    = "nextjs-app/{environment}/terraform.tfstate"
-  region = "us-east-1"
-}
-```
-
 ### 4. Deploy Infrastructure
 
 #### Development Environment
@@ -306,12 +206,6 @@ After deployment, note the outputs:
 terraform output
 ```
 
-Important outputs:
-- `alb_dns_name`: Your application URL
-- `ecr_repository_url`: ECR repository URL
-- `bitbucket_access_key_id`: AWS Access Key for Bitbucket
-- `bitbucket_secret_access_key`: AWS Secret Key for Bitbucket
-
 ## 🔐 Bitbucket Variables Setup
 
 ### Step 1: Get AWS Credentials from Terraform
@@ -335,14 +229,6 @@ terraform output bitbucket_secret_access_key
 
 3. **Add the following variables:**
 
-#### For Development Environment:
-
-| Variable Name | Value | Secured |
-|--------------|-------|---------|
-| `AWS_ACCESS_KEY_ID` | From Terraform output | ✅ Yes |
-| `AWS_SECRET_ACCESS_KEY` | From Terraform output | ✅ Yes |
-| `AWS_REGION` | `us-east-1` (or your region) | ❌ No |
-| `APP_NAME` | `nextjs-app` | ❌ No |
 
 #### For Production Environment:
 
@@ -513,14 +399,4 @@ terraform destroy
 
 **Warning**: This will delete all resources including ECR images, ECS tasks, and ALB.
 
-## 📚 Additional Resources
-
-- [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
-- [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Bitbucket Pipelines](https://support.atlassian.com/bitbucket-cloud/docs/get-started-with-bitbucket-pipelines/)
-
-## 📄 License
-
-This project is provided as-is for educational and production use.
 
