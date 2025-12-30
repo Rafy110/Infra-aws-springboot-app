@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Data Insert</title>
+    <style>
+        body { font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; }
+        .container { background: #f5f5f5; padding: 20px; border-radius: 10px; }
+        input[type="text"] { padding: 10px; width: 200px; margin-right: 10px; }
+        button { padding: 10px 20px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background: #45a049; }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        .delete-btn { background: #f44336; color: white; border: none; padding: 5px 10px; cursor: pointer; }
+        .delete-btn:hover { background: #d32f2f; }
+        h2 { color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📝 Insert Data into Database</h2>
+        
+        <!-- Form to insert data -->
+        <form action="/add" method="post">
+            <input type="text" name="name" placeholder="Enter name" required>
+            <button type="submit">➕ Add User</button>
+        </form>
+        
+        <!-- Display all users -->
+        <h3>📋 Users in Database:</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="user : ${users}">
+                    <td th:text="${user.id}">ID</td>
+                    <td th:text="${user.name}">Name</td>
+                    <td>
+                        <a th:href="@{/delete/{id}(id=${user.id})}">
+                            <button class="delete-btn">❌ Delete</button>
+                        </a>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div style="margin-top: 20px; font-size: 0.9em; color: #666;">
+            <strong>✅ Database Connected:</strong> MySQL
+            <br><strong>📊 Total Users:</strong> <span th:text="${users.size()}">0</span>
+        </div>
+    </div>
+</body>
+</html>
