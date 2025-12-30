@@ -119,8 +119,11 @@ module "ecs" {
   private_subnet_ids    = module.networking.private_subnet_ids
   ecs_security_group_id  = module.networking.ecs_security_group_id
   target_group_arn      = module.alb.target_group_arn
+  blue_target_group_arn = module.alb.blue_target_group_arn
   blue_target_group_name = module.alb.blue_target_group_name
   green_target_group_name = module.alb.green_target_group_name
+  https_listener_arn = module.alb.https_listener_arn
+  http_listener_arn = module.alb.http_listener_arn
   task_execution_role_arn = module.security.task_execution_role_arn
   task_role_arn         = module.security.task_role_arn
   # Database connection info

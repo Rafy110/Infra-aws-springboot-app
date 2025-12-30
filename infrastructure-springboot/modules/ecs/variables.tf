@@ -63,6 +63,11 @@ variable "target_group_arn" {
   type        = string
 }
 
+variable "blue_target_group_arn" {
+  description = "ARN of the blue target group for initial load balancer configuration"
+  type        = string
+}
+
 variable "blue_target_group_name" {
   description = "Name of the blue target group for Blue/Green deployment"
   type        = string
@@ -71,6 +76,18 @@ variable "blue_target_group_name" {
 variable "green_target_group_name" {
   description = "Name of the green target group for Blue/Green deployment"
   type        = string
+}
+
+variable "https_listener_arn" {
+  description = "ARN of the HTTPS listener for Blue/Green deployment"
+  type        = string
+  default     = ""
+}
+
+variable "http_listener_arn" {
+  description = "ARN of the HTTP listener for Blue/Green deployment"
+  type        = string
+  default     = ""
 }
 
 variable "task_execution_role_arn" {

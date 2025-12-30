@@ -47,7 +47,7 @@ resource "aws_ecs_task_definition" "main" {
       environment = [
         {
           name  = "SPRING_DATASOURCE_URL"
-          value = "jdbc:mysql://${var.db_endpoint}:${var.db_port}/${var.db_name}?useSSL=true&requireSSL=true"
+          value = "jdbc:mysql://${var.db_endpoint}:${var.db_port}/${var.db_name}?useSSL=false&allowPublicKeyRetrieval=true"
         },
         {
           name  = "SPRING_DATASOURCE_USERNAME"
@@ -96,7 +96,9 @@ resource "aws_ecs_task_definition" "main" {
   }
 }
 
-# ECS Service with Blue/Green Deployment using CodeDeploy
+# ECS Service - Created first with standard deployment
+# After CodeDeploy is created, update this service to use CODE_DEPLOY via AWS Console/CLI
+# Or use: aws ecs update-service --cluster <cluster> --service <service> --deployment-controller type=CODE_DEPLOY
 resource "aws_ecs_service" "main" {
   name            = "${var.app_name}-${var.environment}-service"
   cluster         = aws_ecs_cluster.main.id
@@ -110,15 +112,20 @@ resource "aws_ecs_service" "main" {
     assign_public_ip = false
   }
 
-  # Use CodeDeploy for Blue/Green deployment (no load_balancer block when using CODE_DEPLOY)
+  # Use CodeDeploy for Blue/Green deployment
   deployment_controller {
     type = "CODE_DEPLOY"
   }
 
-  deployment_circuit_breaker {
-    enable   = true
-    rollback = true
+  # Load balancer configuration for initial deployment (CodeDeploy will manage traffic switching)
+  load_balancer {
+    target_group_arn = var.blue_target_group_arn # Use blue target group initially
+    container_name   = "${var.app_name}-${var.environment}-container"
+    container_port   = var.container_port
   }
+
+  # Note: deployment_circuit_breaker is not supported with CODE_DEPLOY controller
+  # CodeDeploy handles rollback functionality
 
   enable_execute_command = true
 
@@ -128,7 +135,7 @@ resource "aws_ecs_service" "main" {
 
   depends_on = [
     aws_ecs_task_definition.main,
-    aws_codedeploy_deployment_group.main
+    aws_iam_role_policy_attachment.codedeploy
   ]
 }
 
@@ -176,9 +183,17 @@ resource "aws_codedeploy_deployment_group" "main" {
   deployment_group_name = "${var.app_name}-${var.environment}-deployment-group"
   service_role_arn      = aws_iam_role.codedeploy.arn
 
+  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce" # <--- ECS-specific
+
+
   ecs_service {
     cluster_name = aws_ecs_cluster.main.name
     service_name = aws_ecs_service.main.name
+  }
+
+  deployment_style {
+    deployment_option = "WITH_TRAFFIC_CONTROL"
+    deployment_type   = "BLUE_GREEN"
   }
 
   blue_green_deployment_config {
@@ -186,9 +201,6 @@ resource "aws_codedeploy_deployment_group" "main" {
       action_on_timeout = "CONTINUE_DEPLOYMENT"
     }
 
-    green_fleet_provisioning_option {
-      action = "COPY_AUTO_SCALING_GROUP"
-    }
 
     terminate_blue_instances_on_deployment_success {
       action                           = "TERMINATE"
@@ -202,17 +214,31 @@ resource "aws_codedeploy_deployment_group" "main" {
   }
 
   load_balancer_info {
-    target_group_info_list {
-      name = var.blue_target_group_name
-    }
-    target_group_info_list {
-      name = var.green_target_group_name
+    target_group_pair_info {
+      prod_traffic_route {
+        listener_arns = [var.https_listener_arn != "" && var.https_listener_arn != null ? var.https_listener_arn : var.http_listener_arn]
+      }
+      test_traffic_route {
+        listener_arns = [] # Empty for blue/green
+      }
+      target_group {
+        name = var.blue_target_group_name
+      }
+      target_group {
+        name = var.green_target_group_name
+      }
     }
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.codedeploy
+  ]
 }
 
-# Data source for current AWS region
+# Data sources for region and account info
 data "aws_region" "current" {}
+
+data "aws_caller_identity" "current" {}
 
 # Auto Scaling Target
 resource "aws_appautoscaling_target" "ecs_target" {
