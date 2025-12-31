@@ -14,6 +14,7 @@ terraform {
     # key    = "springboot-app/{environment}/terraform.tfstate"
     # region = "us-east-1"
   }
+
 }
 
 provider "aws" {

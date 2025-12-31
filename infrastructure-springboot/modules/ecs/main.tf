@@ -124,6 +124,7 @@ resource "aws_ecs_service" "main" {
     container_port   = var.container_port
   }
 
+
   # Note: deployment_circuit_breaker is not supported with CODE_DEPLOY controller
   # CodeDeploy handles rollback functionality
 
