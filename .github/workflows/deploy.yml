@@ -115,7 +115,5 @@ jobs:
         aws deploy create-deployment \
           --application-name $CODEDEPLOY_APP \
           --deployment-group-name $CODEDEPLOY_GROUP \
-          --revision "$(jq -n \
-            --arg content "$(cat appspec.yaml)" \
-            '{revisionType:"AppSpecContent",appSpecContent:{content:$content,contentType:"application/x-yaml"}}')" \
+          --revision revisionType=AppSpecContent,appSpecContent="{\"content\": \"$(cat appspec.yaml)\"}" \
           --region $AWS_REGION
