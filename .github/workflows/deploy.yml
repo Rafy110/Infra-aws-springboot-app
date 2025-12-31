@@ -2,74 +2,67 @@ name: Deploy Spring Boot to ECS (Blue/Green)
 
 on:
   push:
-    branches: [develop, main]
+    branches: [ develop ]
   workflow_dispatch:
 
 env:
   AWS_REGION: us-east-1
 
-  # ECR
-  ECR_REPOSITORY_DEV: springboot-app-dev
-  ECR_REPOSITORY_PROD: springboot-app-prod
+  ECR_REPOSITORY: springboot-app-dev
+  ECS_CLUSTER: springboot-app-dev-cluster
+  ECS_SERVICE: springboot-app-dev-service
 
-  # ECS
-  ECS_CLUSTER_DEV: springboot-app-dev-cluster
-  ECS_CLUSTER_PROD: springboot-app-prod-cluster
-  ECS_SERVICE_DEV: springboot-app-dev-service
-  ECS_SERVICE_PROD: springboot-app-prod-service
-
-  # CodeDeploy
-  CODEDEPLOY_APP_DEV: springboot-app-dev-codedeploy
-  CODEDEPLOY_APP_PROD: springboot-app-prod-codedeploy
-  CODEDEPLOY_GROUP_DEV: springboot-app-dev-deployment-group
-  CODEDEPLOY_GROUP_PROD: springboot-app-prod-deployment-group
+  CODEDEPLOY_APP: springboot-app-dev-codedeploy
+  CODEDEPLOY_GROUP: springboot-app-dev-deployment-group
 
 jobs:
-# =========================
-# DEV
-# =========================
-  deploy-dev:
-    if: github.ref == 'refs/heads/develop'
+  deploy:
     runs-on: ubuntu-latest
+    environment: dev
 
     steps:
+    # --------------------
+    # 1. Checkout code
+    # --------------------
     - uses: actions/checkout@v4
 
-    - name: Configure AWS
+    # --------------------
+    # 2. AWS Login (THIS logs you into ECR + ECS + CodeDeploy)
+    # --------------------
+    - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: temurin
-
-    - name: Build JAR
-      working-directory: ./demo
-      run: mvn clean package -DskipTests
-
-    - name: Login to ECR
+    # --------------------
+    # 3. Login to ECR (token-based, no password needed)
+    # --------------------
+    - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Build & Push Image (DEV)
+    # --------------------
+    # 4. Build & Push Docker Image
+    # --------------------
+    - name: Build & Push Docker Image
       working-directory: ./demo
       env:
         REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        TAG: ${{ github.sha }}
+        IMAGE_TAG: ${{ github.sha }}
       run: |
-        docker build -t $REGISTRY/$ECR_REPOSITORY_DEV:$TAG .
-        docker push $REGISTRY/$ECR_REPOSITORY_DEV:$TAG
+        docker build -t $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-    - name: Get current task definition
+    # --------------------
+    # 5. Get current task definition
+    # --------------------
+    - name: Fetch current task definition
       run: |
         TASK_DEF_ARN=$(aws ecs describe-services \
-          --cluster $ECS_CLUSTER_DEV \
-          --services $ECS_SERVICE_DEV \
+          --cluster $ECS_CLUSTER \
+          --services $ECS_SERVICE \
           --query 'services[0].taskDefinition' \
           --output text)
 
@@ -77,18 +70,19 @@ jobs:
           --task-definition $TASK_DEF_ARN \
           --query 'taskDefinition' > taskdef.json
 
-    - name: Create new task definition
+    # --------------------
+    # 6. Create new task definition with new image
+    # --------------------
+    - name: Register new task definition
+      id: taskdef
       run: |
-        IMAGE="${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY_DEV:${{ github.sha }}"
+        IMAGE="${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:${{ github.sha }}"
 
         jq --arg IMAGE "$IMAGE" \
           '.containerDefinitions[0].image=$IMAGE
-           | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' \
+           | del(.taskDefinitionArn,.revision,.status,.registeredAt,.registeredBy,.compatibilities,.requiresAttributes)' \
           taskdef.json > new-taskdef.json
 
-    - name: Register task definition
-      id: taskdef
-      run: |
         ARN=$(aws ecs register-task-definition \
           --cli-input-json file://new-taskdef.json \
           --query 'taskDefinition.taskDefinitionArn' \
@@ -96,7 +90,10 @@ jobs:
 
         echo "arn=$ARN" >> $GITHUB_OUTPUT
 
-    - name: CodeDeploy Blue/Green (DEV)
+    # --------------------
+    # 7. Create AppSpec file
+    # --------------------
+    - name: Create AppSpec
       run: |
         cat <<EOF > appspec.yaml
         version: 0.0
@@ -110,98 +107,15 @@ jobs:
                   ContainerPort: 8080
         EOF
 
+    # --------------------
+    # 8. Trigger CodeDeploy (THIS deploys to ECS)
+    # --------------------
+    - name: Deploy via CodeDeploy
+      run: |
         aws deploy create-deployment \
-          --application-name $CODEDEPLOY_APP_DEV \
-          --deployment-group-name $CODEDEPLOY_GROUP_DEV \
-          --revision revisionType=AppSpecContent,appSpecContent="$(cat appspec.yaml)"
-
-
-# =========================
-# PROD
-# =========================
-  deploy-prod:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Configure AWS
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: temurin
-
-    - name: Build JAR
-      working-directory: ./demo
-      run: mvn clean package -DskipTests
-
-    - name: Login to ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-
-    - name: Build & Push Image (PROD)
-      working-directory: ./demo
-      env:
-        REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        TAG: ${{ github.sha }}
-      run: |
-        docker build -t $REGISTRY/$ECR_REPOSITORY_PROD:$TAG .
-        docker push $REGISTRY/$ECR_REPOSITORY_PROD:$TAG
-
-    - name: Get current task definition
-      run: |
-        TASK_DEF_ARN=$(aws ecs describe-services \
-          --cluster $ECS_CLUSTER_PROD \
-          --services $ECS_SERVICE_PROD \
-          --query 'services[0].taskDefinition' \
-          --output text)
-
-        aws ecs describe-task-definition \
-          --task-definition $TASK_DEF_ARN \
-          --query 'taskDefinition' > taskdef.json
-
-    - name: Create new task definition
-      run: |
-        IMAGE="${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY_PROD:${{ github.sha }}"
-
-        jq --arg IMAGE "$IMAGE" \
-          '.containerDefinitions[0].image=$IMAGE
-           | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' \
-          taskdef.json > new-taskdef.json
-
-    - name: Register task definition
-      id: taskdef
-      run: |
-        ARN=$(aws ecs register-task-definition \
-          --cli-input-json file://new-taskdef.json \
-          --query 'taskDefinition.taskDefinitionArn' \
-          --output text)
-
-        echo "arn=$ARN" >> $GITHUB_OUTPUT
-
-    - name: CodeDeploy Blue/Green (PROD)
-      run: |
-        cat <<EOF > appspec.yaml
-        version: 0.0
-        Resources:
-          - TargetService:
-              Type: AWS::ECS::Service
-              Properties:
-                TaskDefinition: ${{ steps.taskdef.outputs.arn }}
-                LoadBalancerInfo:
-                  ContainerName: springboot-app-prod-container
-                  ContainerPort: 8080
-        EOF
-
-        aws deploy create-deployment \
-          --application-name $CODEDEPLOY_APP_PROD \
-          --deployment-group-name $CODEDEPLOY_GROUP_PROD \
-          --revision revisionType=AppSpecContent,appSpecContent="$(cat appspec.yaml)"
+          --application-name $CODEDEPLOY_APP \
+          --deployment-group-name $CODEDEPLOY_GROUP \
+          --revision "$(jq -n \
+            --arg content "$(cat appspec.yaml)" \
+            '{revisionType:"AppSpecContent",appSpecContent:{content:$content,contentType:"application/x-yaml"}}')" \
+          --region $AWS_REGION
