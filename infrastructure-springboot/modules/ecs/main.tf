@@ -124,15 +124,9 @@ resource "aws_ecs_service" "main" {
     container_port   = var.container_port
   }
 
-<<<<<<< HEAD:infrastructure/modules/ecs/main.tf
-  deployment_circuit_breaker {
-    enable   = true
-    rollback = true
-  }
-=======
+
   # Note: deployment_circuit_breaker is not supported with CODE_DEPLOY controller
   # CodeDeploy handles rollback functionality
->>>>>>> main:infrastructure-springboot/modules/ecs/main.tf
 
   enable_execute_command = true
 

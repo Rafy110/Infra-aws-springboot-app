@@ -8,21 +8,13 @@ terraform {
     }
   }
 
-<<<<<<< HEAD:infrastructure/main.tf
-  # backend "s3" {
-  #   # Configure backend in your environment-specific main.tf
-  #   # bucket = "your-terraform-state-bucket"
-  #   # key    = "nextjs-app/{environment}/terraform.tfstate"
-  #   # region = "us-east-1"
-  # }
-=======
   backend "s3" {
     # Configure backend in your environment-specific main.tf
     # bucket = "your-terraform-state-bucket"
     # key    = "springboot-app/{environment}/terraform.tfstate"
     # region = "us-east-1"
   }
->>>>>>> main:infrastructure-springboot/main.tf
+
 }
 
 provider "aws" {
